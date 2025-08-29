@@ -16,12 +16,12 @@ Utilities.toCapitals = function (str, lower) {
 } 
 
 /**
- * Initialize MQTT Discovery topic for Home Assisstant
- * @param {string} device 
- * @param {string} control 
+ * Initialize MQTT Discovery topic for Home Assistant
+ * @param {string} device Device name/identifier
+ * @param {string} control Control name/identifier
  * @param {string} device_type Supported device_type: switch, light, cover, sensor
- * @param {str} suggested_area 
- * @returns {boolean}
+ * @param {string} suggested_area Suggested area for the device
+ * @returns {boolean} Returns true if MQTT message was sent successfully
  */
 Utilities.mqttDiscovery = function (device, control, device_type, suggested_area) {
 
@@ -61,12 +61,13 @@ Utilities.mqttDiscovery = function (device, control, device_type, suggested_area
         case "sensor":
             break;
         default:
-            message = JSON.stringify(entity);
+            var message = JSON.stringify(entity);
             log("LOG::",message);
             break;
     }
 
     if (execute) {
+        var message = JSON.stringify(entity);
         runShellCommand("mosquitto_pub -t '" + error + "' -r -m '0'");
         runShellCommand("mosquitto_pub -t '" + key + "' -m '" + message +"'");    
     }
