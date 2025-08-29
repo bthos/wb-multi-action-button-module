@@ -1,3 +1,19 @@
+/**
+ * Button Action Rules Example
+ * 
+ * This file demonstrates how to use the Multi-Action Button Module
+ * for Wirenboard devices. It includes:
+ * 
+ * - Helper functions for common button actions
+ * - Example button configurations
+ * - Best practices for button handling
+ * 
+ * To use this file:
+ * 1. Modify device names to match your hardware
+ * 2. Customize functions for your specific needs  
+ * 3. Add or remove button configurations as required
+ */
+
 var room = require("module_ActionButtons");
 
 /**
@@ -86,8 +102,17 @@ function runPermanentAction(func, prop) {
     }
 }
 ////////////////////////////////////
+// Button Configuration Examples
+////////////////////////////////////
 
-
+/**
+ * Example 1: Multi-action button with single, double, and long press
+ * 
+ * This configuration demonstrates:
+ * - Single press: Toggle K1 relay
+ * - Double press: Toggle K2 relay with auto-off
+ * - Long press: Toggle K3 relay with auto-off
+ */
 room.ActionButtons.onButtonPress(
     "wb-gpio/EXT1_IN1",
     {
@@ -105,6 +130,14 @@ room.ActionButtons.onButtonPress(
         }
     }
 );
+
+/**
+ * Example 2: Simple long press button with custom timing
+ * 
+ * This configuration demonstrates:
+ * - Long press only (no short press actions)
+ * - Custom timing: 300ms wait time, 800ms long press threshold
+ */
 room.ActionButtons.onButtonPress(
     "wb-gpio/EXT1_IN2",
     {
@@ -113,5 +146,9 @@ room.ActionButtons.onButtonPress(
             prop: ["wb-mr6c_33", "K4"]
         }
     },
-    300, 800
+    300,  // timeToNextPress: 300ms between presses
+    800   // timeOfLongPress: 800ms to trigger long press
 );
+
+// Log successful initialization
+log("Button rules loaded successfully!");
