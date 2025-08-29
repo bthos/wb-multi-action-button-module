@@ -1,34 +1,62 @@
 /**
+ * Wirenboard Multi-Action Button Module
  * Version: 0.3.2
  * 
- * Function that identifies what kind of button press was performed: 
- * - Short press: single, double, triple, etc. - you can add more if you need
- * - Long press (and release)
- * - Long press (without release)
- * Script also assigns an action for each type of button press.
- *
- * @param  {string} trigger         -  Name of device and control in the following format: "<device>/<control>".
- * @param  {object} action          -  Defines actions to be taken for each type of button press.
- *                                  Key: "singlePress" or "doublePress" or "triplePress" or "longPress" or "longRelease".
- *                                  Value: Object having the following structure {func: <function name>, prop: <array of parameters to be passed>}
- *                                  Example:
- *                                  {
- *                                      singlePress: {func: myFunc1, prop: ["wb-mr6c_1", "K1"]},
- *                                      doublePress: {func: myFunc2, prop: ["wb-mrgbw-d_2", "RGB", "255;177;85"]},
- *                                      triplePress: {func: myFunc3, prop: []},
- *                                      longPress: {func: myFunc4, prop: []},
- *                                      longRelease: {func: myFunc5, prop: []}
- *                                  }
- * @param  {number} timeToNextPress -  Time (ms) after button up to wait for the next press before reseting the counter. Default is 300 ms.
- * @param  {number} timeOfLongPress -  Time (ms) after button down to be considered as as a long press. Default is 1000 ms (1 sec).
- * @param  {number} intervalOfRepeat - Time (ms) before repeating action specified in LongPress action. Default is 100 ms.
- * 
- * Note: In case longRelease function defined, longPress function will repeate till button is released.
- *       In case longRelease function not defined, only one action will be executed for longPress.
+ * This module provides functionality to detect and handle different types of button press events:
+ * - Single, double, triple short presses (extensible to more)
+ * - Long press with optional release detection
+ * - Configurable timing parameters
+ * - Repeating actions during long press
  */
 var ActionButtons = {};
 
+/**
+ * Registers button press handlers for a specific trigger device/control
+ * 
+ * @param {string} trigger - Device and control name in format "<device>/<control>" (e.g., "wb-gpio/EXT1_IN1")
+ * @param {object} action - Configuration object defining actions for different press types
+ * @param {object} [action.singlePress] - Single press action: {func: Function, prop: Array}
+ * @param {object} [action.doublePress] - Double press action: {func: Function, prop: Array}  
+ * @param {object} [action.triplePress] - Triple press action: {func: Function, prop: Array}
+ * @param {object} [action.longPress] - Long press action: {func: Function, prop: Array}
+ * @param {object} [action.longRelease] - Long press release action: {func: Function, prop: Array}
+ * @param {number} [timeToNextPress=300] - Time (ms) to wait for next press before processing action
+ * @param {number} [timeOfLongPress=1000] - Time (ms) to consider press as long press  
+ * @param {number} [intervalOfRepeat=100] - Time (ms) interval for repeating longPress action
+ * 
+ * @example
+ * // Basic usage with single and double press
+ * ActionButtons.onButtonPress(
+ *   "wb-gpio/EXT1_IN1",
+ *   {
+ *     singlePress: {func: switchRelay, prop: ["wb-mr6c_33", "K1"]},
+ *     doublePress: {func: switchRelayWithAutoOff, prop: ["wb-mr6c_33", "K2"]}
+ *   }
+ * );
+ * 
+ * @example  
+ * // Advanced usage with custom timing
+ * ActionButtons.onButtonPress(
+ *   "wb-gpio/EXT1_IN2", 
+ *   {
+ *     longPress: {func: switchRelay, prop: ["wb-mr6c_33", "K4"]}
+ *   },
+ *   300, 800 // Custom timing: 300ms between presses, 800ms for long press
+ * );
+ * 
+ * @note If longRelease is defined, longPress will repeat until button is released.
+ *       If longRelease is not defined, longPress executes only once.
+ */
 ActionButtons.onButtonPress = function (trigger, action, timeToNextPress, timeOfLongPress, intervalOfRepeat) {
+    
+    // Input validation
+    if (typeof trigger !== "string" || !trigger.includes("/")) {
+        throw new Error("ActionButtons: trigger must be a string in format 'device/control'");
+    }
+    
+    if (typeof action !== "object" || action === null) {
+        throw new Error("ActionButtons: action must be an object");
+    }
     
     // Set default values if not passed into function
     timeToNextPress = timeToNextPress || 300;
@@ -36,44 +64,47 @@ ActionButtons.onButtonPress = function (trigger, action, timeToNextPress, timeOf
     intervalOfRepeat = intervalOfRepeat || 100;
     
     var buttonPressedCounter = 0;
-    // var actionRepeatCounter = 0;
+    var actionRepeatCounter = 0;
     var timerWaitNextShortPress = undefined;
     var timerLongPress = undefined;
     var timerWaitLongRelease = undefined;
     var isLongPressed = false;
     var isLongReleased = false;
 
+    // Generate unique rule name from trigger
     var ruleName = "on_button_press_" + trigger.replace("/", "_");
-    log("LOG::Define WB Rule::", ruleName);
+    log("ActionButtons: Defining rule:", ruleName);
 
     defineRule(ruleName, {
         whenChanged: trigger,
         then: function (newValue, devName, cellName) {
 
-            // If button is pressed, wait for a Long Press
+            // Button pressed - start long press detection
             if (newValue) {
-
+                // Clear any existing timers
                 if (typeof timerWaitNextShortPress == "number") {
-                    log("LOG::timerWaitNextShortPress(1)::", timerWaitNextShortPress);
                     clearTimeout(timerWaitNextShortPress);
                     timerWaitNextShortPress = undefined;
                 }
                 if (typeof timerLongPress == "number") {
-                    log("LOG::timerLongPress::", timerLongPress);
                     clearTimeout(timerLongPress);
                     timerLongPress = undefined;
                 }
+                
+                // Start long press timer
                 timerLongPress = setTimeout(function () {
-                    // Long Press identified, we will skip short press
+                    // Long press detected
                     isLongPressed = true;
                     isLongReleased = false;
                     buttonPressedCounter = 0;
                     actionRepeatCounter = 1;
+                    
+                    // Execute long press action
                     if (typeof action.longPress === "object") {
                         if (typeof action.longPress.func === "function") {
                             action.longPress.func.apply(this, action.longPress.prop);
                             
-                            // If Long Release action defined, we will repeat Long Press action till not released. Otherwise only 1 Long Press action is executed
+                            // Setup repeating action if longRelease is defined
                             if (typeof action.longRelease === "object") {
                                 if (typeof action.longRelease.func === "function") {
                                     timerWaitLongRelease = setInterval(function () {
@@ -83,7 +114,6 @@ ActionButtons.onButtonPress = function (trigger, action, timeToNextPress, timeOf
                                                     action.longPress.func.apply(this, action.longPress.prop);
                                                 }
                                             }
-                                            // log(">>>>>> long press - press (" + actionRepeatCounter++ + ") <<<<<<");    
                                         }
                                         if(isLongReleased) {
                                             clearInterval(timerWaitLongRelease);
@@ -91,78 +121,71 @@ ActionButtons.onButtonPress = function (trigger, action, timeToNextPress, timeOf
                                     }, intervalOfRepeat);        
                                 }                                        
                             }
-    
                         }
                     }
-                    // log(">>>>>> long press - press (" + actionRepeatCounter++ + ") <<<<<<");
                     timerLongPress = undefined;
                 }, timeOfLongPress);
 
             }
 
-            // If button is released, then it is not a Long Press, start to count clicks
+            // Button released - handle short press counting or long press release
             else {
                 if (!isLongPressed) {
+                    // Handle short press sequence
                     if (typeof timerLongPress == "number") {
-                        log("LOG::timerLongPress::", timerLongPress);
                         clearTimeout(timerLongPress);
                         timerLongPress = undefined;
                     }
+                    
                     buttonPressedCounter += 1;
+                    
                     if (typeof timerWaitNextShortPress == "number") {
-                        log("LOG::timerWaitNextShortPress(2)::", timerWaitNextShortPress);
                         clearTimeout(timerWaitNextShortPress);
                         timerWaitNextShortPress = undefined;
                     }
+                    
+                    // Start timer to wait for additional presses
                     timerWaitNextShortPress = setTimeout(function () {
                         switch (buttonPressedCounter) {
-                        // Counter equals 1 - it's a single short press
                         case 1:
+                            // Single press detected
                             if (typeof action.singlePress === "object") {
                                 if (typeof action.singlePress.func === "function") {
                                     action.singlePress.func.apply(this, action.singlePress.prop);
                                 }
                             }
-                            // log(">>>>>> short press - single <<<<<<");
                             break;
-                        // Counter equals 2 - it's a double short press
                         case 2:
+                            // Double press detected
                             if (typeof action.doublePress === "object") {
                                 if (typeof action.doublePress.func === "function") {
                                     action.doublePress.func.apply(this, action.doublePress.prop);
                                 }
                             }
-                            // log(">>>>>> short press - double <<<<<<");
                             break;
-                        // Counter equals 3 - it's a triple short press
                         case 3:
+                            // Triple press detected
                             if (typeof action.triplePress === "object") {
                                 if (typeof action.triplePress.func === "function") {
                                     action.triplePress.func.apply(this, action.triplePress.prop);
                                 }
                             }
-                            // log(">>>>>> short press - triple <<<<<<");
                             break;
-                        // You can add more cases here to track more clicks
+                        // Additional cases can be added here for more click patterns
                         }
-                        // Reset the counter
+                        // Reset counter and timer
                         buttonPressedCounter = 0;
                         timerWaitNextShortPress = undefined;
                     }, timeToNextPress);
                 }
-
-                // Catch button released after long press
+                
+                // Handle long press release
                 else {
                     if (typeof action.longRelease === "object") {
                         if (typeof action.longRelease.func === "function") {
-                            // if (typeof action.longRelease.prop === "array") {
-                                action.longRelease.func.apply(this, action.longRelease.prop);
-                            // } else {
-                            //     action.longRelease.func.apply(this, []);
-                            // }
+                            action.longRelease.func.apply(this, action.longRelease.prop);
                         }
                     }
-                    // log(">>>>>> long press - release <<<<<<");
                     isLongPressed = false;
                     isLongReleased = true;
                 }
