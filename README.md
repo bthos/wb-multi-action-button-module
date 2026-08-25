@@ -36,3 +36,10 @@ Example:
  
 Note: In case longRelease function defined, longPress function will repeate till button is released.
   In case longRelease function not defined, only one action will be executed for longPress.
+
+## Requirements and limitations
+
+- The `trigger` control must be a switch-like control that reports both press (`1`) and release (`0`) events (e.g. `wb-gpio` inputs). Controls of `pushbutton` type are not supported: they never report a release event, so a press cannot be distinguished from a long press. The module logs a warning if it detects such a control.
+- `prop` must be an array — it is passed to the action function as the list of its arguments.
+- `onButtonPress` returns the name of the created rule (it can be passed to `disableRule`/`enableRule`), or `null` if the arguments were invalid and no rule was defined.
+- Invalid timing parameters (non-numbers, zero or negative values) fall back to the defaults.
