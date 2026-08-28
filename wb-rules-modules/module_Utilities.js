@@ -13,7 +13,17 @@ var Utilities = {};
 Utilities.toCapitals = function (str, lower) {
     lower = lower || false;
     return (lower ? str.toLowerCase() : str).replace(/\b\w/g, function(match){ return match.toUpperCase() });
-} 
+}
+
+/**
+ * Wraps a value in single quotes for safe use as a shell argument
+ * (single quotes inside the value are escaped as '\'').
+ * @param {string} value
+ * @return {string}
+ */
+function quoteForShell(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'";
+}
 
 /**
  * Initialize MQTT Discovery topic for Home Assisstant
@@ -61,14 +71,14 @@ Utilities.mqttDiscovery = function (device, control, device_type, suggested_area
         case "sensor":
             break;
         default:
-            message = JSON.stringify(entity);
-            log("LOG::",message);
+            log("LOG::", JSON.stringify(entity));
             break;
     }
 
     if (execute) {
-        runShellCommand("mosquitto_pub -t '" + error + "' -r -m '0'");
-        runShellCommand("mosquitto_pub -t '" + key + "' -m '" + message +"'");    
+        var message = JSON.stringify(entity);
+        runShellCommand("mosquitto_pub -t " + quoteForShell(error) + " -r -m '0'");
+        runShellCommand("mosquitto_pub -t " + quoteForShell(key) + " -m " + quoteForShell(message));
     }
 
     return execute;
