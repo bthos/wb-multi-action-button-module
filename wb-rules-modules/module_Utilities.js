@@ -13,65 +13,61 @@ var Utilities = {};
 Utilities.toCapitals = function (str, lower) {
     lower = lower || false;
     return (lower ? str.toLowerCase() : str).replace(/\b\w/g, function(match){ return match.toUpperCase() });
-} 
+}
+
+// Type specific part of the Home Assistant discovery config, keyed by device_type.
+// Add "light", "cover", "sensor" here to support them.
+var DISCOVERY_TYPES = {
+    "switch": function (entity, control) {
+        entity.state_topic = "~/" + control;
+        entity.command_topic = "~/" + control + "/on";
+        entity.payload_on = "1";
+        entity.payload_off = "0";
+        entity.device_class = "switch";
+    }
+};
 
 /**
  * Initialize MQTT Discovery topic for Home Assisstant
- * @param {string} device 
- * @param {string} control 
- * @param {string} device_type Supported device_type: switch, light, cover, sensor
- * @param {str} suggested_area 
- * @returns {boolean}
+ * @param {string} device
+ * @param {string} control
+ * @param {string} device_type Supported device_type: switch
+ * @param {str} suggested_area
+ * @returns {boolean} true if the discovery config was published
  */
 Utilities.mqttDiscovery = function (device, control, device_type, suggested_area) {
 
-    var execute = false;
-    var key = "homeassistant/"+device_type+"/"+device+"_"+control+"/config";
-    var error = "/devices/"+device+"/controls/"+control+"/meta/error";
-    var entity = new Object();
-    entity["~"] = "/devices/"+ device +"/controls";
-    entity.name = Utilities.toCapitals(device +" "+ control);
-    entity.payload_on = "1";
-    entity.payload_off = "0";
-    entity.availability_topic = "~/"+ control +"/meta/error";
-    entity.payload_available = "0";
-    entity.payload_not_available = "1";
-
-    entity.device = new Object();
-    entity.device.name = Utilities.toCapitals(device);
-    entity.device.identifiers = device;
-    entity.device.manufacturer = "N/A";
-    entity.device.model = "N/A";
-    // entity.device.via_device = "wirenboard--";
-    entity.device.suggested_area = suggested_area;
-
-    switch (device_type) {
-        case "switch":
-            entity.unique_id = device +"_"+ control;
-            entity.state_topic = "~/"+ control;
-            entity.command_topic = "~/"+ control +"/on";
-            entity.device_class = "switch";
-            // entity.icon = "mdi:switch";        
-            execute = true;
-            break;
-        case "light":
-            break;
-        case "cover":
-            break;
-        case "sensor":
-            break;
-        default:
-            message = JSON.stringify(entity);
-            log("LOG::",message);
-            break;
+    var configure = DISCOVERY_TYPES[device_type];
+    if (!configure) {
+        log.warning("mqttDiscovery: device_type '{}' is not supported (supported: {})",
+            device_type, Object.keys(DISCOVERY_TYPES).join(", "));
+        return false;
     }
 
-    if (execute) {
-        runShellCommand("mosquitto_pub -t '" + error + "' -r -m '0'");
-        runShellCommand("mosquitto_pub -t '" + key + "' -m '" + message +"'");    
-    }
+    var entity = {
+        "~": "/devices/" + device + "/controls",
+        name: Utilities.toCapitals(device + " " + control),
+        unique_id: device + "_" + control,
+        // Wiren Board reports control errors ("r", "w", "p"...) in meta/error, empty or "0" means no error
+        availability_topic: "~/" + control + "/meta/error",
+        availability_template: "{{ 'online' if value in ['', '0'] else 'offline' }}",
+        device: {
+            name: Utilities.toCapitals(device),
+            identifiers: [device],
+            manufacturer: "N/A",
+            model: "N/A",
+            suggested_area: suggested_area
+        }
+    };
+    configure(entity, control);
 
-    return execute;
+    // Home Assistant shows the entity as unavailable until the first availability message,
+    // and Wiren Board publishes meta/error only on failures - so seed it as "no error"
+    publish("/devices/" + device + "/controls/" + control + "/meta/error", "0", 1, true);
+
+    // Retained, so Home Assistant gets the config again after its own restart
+    publish("homeassistant/" + device_type + "/" + device + "_" + control + "/config", JSON.stringify(entity), 1, true);
+    return true;
 }
 
 

@@ -46,3 +46,11 @@ Note: In case longRelease function defined, longPress function will repeate till
 - If a release event is lost after a long press, `longRelease` is called on the next press.
 - `onButtonPress` returns the name of the created rule (usable with `disableRule`/`enableRule`), or `null` if the arguments were invalid.
 - Timing parameters that are not positive numbers fall back to the defaults.
+
+## Tests
+
+The scripts are tested on Node.js (18+) in an emulated wb-rules environment (`test/wb-rules-env.js`: virtual timers, rules, `dev[]`, `publish`, shell). No dependencies are needed:
+
+```
+npm test
+```

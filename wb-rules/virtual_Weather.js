@@ -2,6 +2,7 @@
 var latitude = "NN.NN";
 var longitude = "NN.NN";
 // Generate Key here: https://home.openweathermap.org/api_keys
+// Do not commit a real key to a public repository
 var appid = "<alpha-numeric Key from openweathermap>";
 
 defineVirtualDevice("weather", {
@@ -73,64 +74,73 @@ defineVirtualDevice("weather", {
     }
 }); 
 
-function getWeather() {
-    var weather_data = readConfig("/usr/weather/data.json");
-    var directions = ["north", "north-west", "west", "south-west", "south", "south-east", "east", "north-east"];
+var WIND_DIRECTIONS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
 
-    var lastUpdated = new Date( format(weather_data.dt)*1000 );
-    dev["weather/last_updated"] = lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    dev["weather/description"] = format(weather_data.weather[0].description);
-    dev["weather/icon"] = "http://openweathermap.org/img/wn/" + format(weather_data.weather[0].icon) + "@4x.png";
-    dev["weather/temperature"] = parseFloat( format(weather_data.main.temp) );
-    dev["weather/feels_like"] = parseFloat( format(weather_data.main.feels_like) );
-    dev["weather/temperature_min"] = parseFloat( format(weather_data.main.temp_min) );
-    dev["weather/temperature_max"] = parseFloat( format(weather_data.main.temp_max) );
-    dev["weather/pressure"] = parseFloat( format(weather_data.main.pressure) );
-    dev["weather/humidity"] = parseFloat( format(weather_data.main.humidity) );
-    dev["weather/wind_speed"] = parseFloat( format(weather_data.wind.speed) );
+// Formats unix time (seconds) as local "HH:MM" (Duktape ignores toLocaleTimeString options)
+function toHoursMinutes(unixTime) {
+    var date = new Date(unixTime * 1000);
+    function pad(n) { return (n < 10 ? "0" : "") + n; }
+    return pad(date.getHours()) + ":" + pad(date.getMinutes());
+}
 
-    var angle = parseFloat( format(weather_data.wind.deg) );
-    dev["weather/wind_direction"] =  angle + "° " + directions[Math.round(((angle %= 360) < 0 ? angle + 360 : angle) / 45) % 8];
+// Wind degrees go clockwise from north: 0 - north, 90 - east
+function toWindDirection(degrees) {
+    if (typeof degrees !== "number") {
+        return "-";
+    }
+    return degrees + "° " + WIND_DIRECTIONS[Math.round((((degrees % 360) + 360) % 360) / 45) % 8];
+}
 
-    dev["weather/clouds"] = format(weather_data.clouds.all) + "%";
-    dev["weather/clouds_description"] = dev["weather/clouds"] + " (" + dev["weather/description"] + ")"; 
+function updateWeather(data) {
+    dev["weather/last_updated"] = toHoursMinutes(data.dt);
+    dev["weather/description"] = data.weather[0].description;
+    dev["weather/icon"] = "https://openweathermap.org/img/wn/" + data.weather[0].icon + "@4x.png";
+    dev["weather/temperature"] = data.main.temp;
+    dev["weather/feels_like"] = data.main.feels_like;
+    dev["weather/temperature_min"] = data.main.temp_min;
+    dev["weather/temperature_max"] = data.main.temp_max;
+    dev["weather/pressure"] = data.main.pressure;
+    dev["weather/humidity"] = data.main.humidity;
+    dev["weather/wind_speed"] = data.wind.speed;
+    dev["weather/wind_direction"] = toWindDirection(data.wind.deg);
+    dev["weather/clouds"] = data.clouds.all + "%";
+    dev["weather/clouds_description"] = dev["weather/clouds"] + " (" + data.weather[0].description + ")";
+    dev["weather/sunrise"] = toHoursMinutes(data.sys.sunrise);
+    dev["weather/sunset"] = toHoursMinutes(data.sys.sunset);
+}
 
-    var dateSunrise = new Date( format(weather_data.sys.sunrise)*1000 );
-    var dateSunset = new Date( format(weather_data.sys.sunset)*1000 );
-    // dev["weather/sunrise"] = dateSunrise.toString();
-    // dev["weather/sunset"] = dateSunset.toString();
-    dev["weather/sunrise"] = dateSunrise.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    dev["weather/sunset"] = dateSunset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// Requests the weather API and updates the device when the response arrives.
+// On any failure the previous values are kept.
+function fetchWeather() {
+    var url = "https://api.openweathermap.org/data/2.5/weather?units=metric" +
+        "&lat=" + encodeURIComponent(latitude) +
+        "&lon=" + encodeURIComponent(longitude) +
+        "&appid=" + encodeURIComponent(appid);
 
-    // log("Time: {}".format(weather_data.dt));
-    // log("Temperature is: {}".format(weather_data.main.temp));
-    // log("Humidity is: {}".format(weather_data.main.humidity));
-    // log("Wind speed is: {}".format(weather_data.wind.speed));
+    runShellCommand("wget -qO- '" + url + "'", {
+        captureOutput: true,
+        exitCallback: function (exitCode, output) {
+            if (exitCode !== 0) {
+                log.error("Weather: request failed, wget exit code {}", exitCode);
+                return;
+            }
+            try {
+                updateWeather(JSON.parse(output));
+            } catch (e) {
+                log.error("Weather: unexpected response: {}", e);
+            }
+        }
+    });
 }
 
 defineRule("weather_call", {	// Periodic call to weather API
     when: cron("@every 30m"),
-    then: function() {
-        runShellCommand("wget -qO /usr/weather/data.json 'https://api.openweathermap.org/data/2.5/weather?lat="+latitude+"&lon="+longitude+"&units=metric&appid="+appid+"'");
-        startTimer("wait_weather", 5*1000);  		// Wait for response from weather API	
-    //    log("Request sent");
-    }
+    then: fetchWeather
 });
 
-defineRule("weather_update", {
+defineRule("weather_update", {	// Manual update
     whenChanged: "weather/get_update",
-    then: function() {
-      getWeather();
-    }
+    then: fetchWeather
 });
 
-defineRule("weather_parse", {	// Read weather data response from API
-    when: function() { 
-        return timers.wait_weather.firing;
-    },
-    then: function() {
-      getWeather();
-    }
-});
-
-log("Weather script updated!");
+fetchWeather();

@@ -1,0 +1,8 @@
+{
+  "name": "wb-multi-action-button-module",
+  "private": true,
+  "description": "Tests run the wb-rules scripts in an emulated wb-rules environment on Node.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
