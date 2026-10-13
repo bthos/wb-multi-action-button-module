@@ -7,6 +7,18 @@ Function that identifies what kind of button press was performed:
 
 Script also assigns an action for each type of button press.
 
+## Installation
+
+Copy the files to the controller and restart wb-rules:
+
+```
+cp wb-rules-modules/*.js /etc/wb-rules-modules/
+cp wb-rules/rules_Buttons.js /etc/wb-rules/       # your button rules, see below
+cp wb-rules/virtual_Weather.js /etc/wb-rules/     # optional: set latitude, longitude and appid first
+systemctl restart wb-rules
+```
+
+## Usage
 
   @param  {string} trigger -  Name of device and control in the following format: "<device>/<control>".
 
@@ -54,3 +66,5 @@ The scripts are tested on Node.js (18+) in an emulated wb-rules environment (`te
 ```
 npm test
 ```
+
+They also run on GitHub for every pull request and push to `main` (`.github/workflows/test.yml`).
